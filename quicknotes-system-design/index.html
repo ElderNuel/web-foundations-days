@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>QuickNotes API Client</title>
+    <link rel="stylesheet" href="style.css" />
+    <script src="api.js" defer></script>
+  </head>
+  <body>
+    <header>
+      <h1>QuickNotes</h1>
+      <p>Capture ideas before they disappear.</p>
+    </header>
+    
+    <main>
+      <section class="card">
+        <h2>System Status</h2>
+        <p id="status" aria-live="polite">Ready to connect.</p>
+      </section>
+
+      <section class="card">
+        <h2>Add a Note</h2>
+        <form id="note-form">
+          <div class="form-group">
+            <label for="title-input">Note Title</label>
+            <input type="text" id="title-input" placeholder="Enter title (required, max 100 chars)" />
+          </div>
+          
+          <div class="form-group">
+            <label for="body-input">Note Body</label>
+            <textarea id="body-input" rows="4" placeholder="Enter details (optional)..."></textarea>
+          </div>
+          
+          <button type="submit" id="submit-btn">Create Note</button>
+        </form>
+      </section>
+
+      <section class="card">
+        <h2>Your Notes</h2>
+        <button id="load-btn">Load notes</button>
+        <ul id="notes-list"></ul>
+      </section>
+    </main>
+
+    <footer>
+      <p>&copy; 2026 QuickNotes. Emmanuel Chijinkem Ukah.</p>
+    </footer>
+  </body>
+</html>
