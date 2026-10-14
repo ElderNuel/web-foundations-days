@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>User Directory</title>
+    <script src="users.js" defer></script>
+  </head>
+  <body>
+    <header>
+      <h1>User Directory</h1>
+    </header>
+    <main>
+      <section>
+        <button id="load-users">Load Users</button>
+        
+        <!-- Explicitly labelled input following semantic accessibility feedback -->
+        <div>
+          <label for="filter-input">Filter by Name:</label>
+          <input type="text" id="filter-input" placeholder="Start typing a name..." />
+        </div>
+
+        <p id="status"></p>
+        <ul id="users-list"></ul>
+      </section>
+    </main>
+  </body>
+</html>
