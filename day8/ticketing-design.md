@@ -55,21 +55,22 @@ To enforce defensive programming, all endpoints utilize try/catch blocks, valida
 For the `orders` table, we opted for a dedicated surrogate ID (`id` column) alongside a `UNIQUE(seat_id)` constraint rather than using a composite primary key like `(user_id, seat_id)`. Using a surrogate ID makes single-record mutations and specific API routing (e.g., `PATCH /api/orders/{id}`) much simpler and less verbose for the application's ORM. Conversely, a composite primary key rigidly enforces uniqueness at the schema level without requiring an additional index but makes specific record targeting complex if an order needs to be updated or refunded independently of the user-seat pairing.
 
 ## 5. Concurrency & Double-Booking Prevention
-The system relies on a relational SQL database utilizing strict ACID transactions and row-level locking to prevent double-booking. When a user attempts to hold a seat, the backend executes:
+The system relies on a relational SQL database utilizing strict ACID transactions and row-level locking to prevent double-booking. To prevent artificially drying up inventory when users abandon their carts, the system utilizes "on-the-spot" reclamation alongside a background cleanup job. When a user attempts to hold a seat, the backend executes:
 
     BEGIN TRANSACTION;
-    SELECT * FROM seats WHERE id = 123 AND status = 'available' FOR UPDATE;
-    UPDATE seats SET status = 'held', user_id = 456, held_until = NOW() + INTERVAL '10 minutes' WHERE id = 123;
+    
+    SELECT * FROM seats 
+    WHERE id = 123 
+      AND (status = 'available' OR (status = 'held' AND held_until < NOW())) 
+    FOR UPDATE;
+    
+    UPDATE seats 
+    SET status = 'held', user_id = 456, held_until = NOW() + INTERVAL '10 minutes' 
+    WHERE id = 123;
+    
     COMMIT;
 
-The `FOR UPDATE` clause issues a row-level lock. If 10,000 users click the same seat at the exact same millisecond, the database forces their transactions into a sequential queue. The first user succeeds; the subsequent users will read the status as 'held' and fail. The `UNIQUE(seat_id)` constraint on the `orders` table serves as a secondary defense mechanism.
-
-**Handling Abandoned Holds:**
-To prevent inventory from drying up artificially if a user abandons their cart, the `seats` table includes a `held_until` timestamp. A background worker (or a recurring CRON job) runs continuously to release expired holds back into the available pool:
-
-    UPDATE seats 
-    SET status = 'available', user_id = NULL, held_until = NULL 
-    WHERE status = 'held' AND held_until < NOW();
+The `FOR UPDATE` clause issues a row-level lock. By checking if `held_until < NOW()` directly in the `WHERE` clause, incoming users can instantly claim a stale seat from an abandoned cart without waiting for a scheduled cron job to sweep the database. If thousands of users click the same seat simultaneously, the database forces their transactions into a sequential queue. The first user succeeds; subsequent users will read the newly updated 'held' status (with a future timestamp) and fail. The `UNIQUE(seat_id)` constraint on the `orders` table serves as an impenetrable secondary defense mechanism against double-booking completed purchases.
 
 ## 6. Architecture Diagram & Explanation
 
@@ -108,7 +109,7 @@ To prevent inventory from drying up artificially if a user abandons their cart, 
 * **Cache (Redis):** Stores heavily accessed, volatile read data (like available event lists and seating availability) in fast RAM.
 * **Primary DB:** The definitive relational data store utilizing row-locking to safely write holds and orders.
 * **Read Replica:** A synchronized copy of the primary database used strictly to offload read-heavy queries.
-* **Message Queue & Worker:** The queue receives slow tasks (like emailing tickets or running the `held_until` seat cleanup job), allowing background workers to process them asynchronously without freezing the user's web request.
+* **Message Queue & Worker:** The queue receives slow tasks (like emailing tickets or running secondary database sweeps), allowing background workers to process them asynchronously without freezing the user's web request.
 
 **Surviving the Big Sale:**
 When 200,000 users flood the site, the **Virtual Queue Room** absorbs the initial shock, smoothing out the 555-fold write spike by forwarding a manageable subset of users to the Load Balancer. Read traffic (3,333 views/sec) is handled primarily by the **CDN** and the **Cache (Redis)**, sparing the database. Only users who successfully initiate a hold reach the **Primary DB**, keeping raw socket connections low and ensuring the system remains responsive.
