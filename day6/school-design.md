@@ -1,19 +1,24 @@
 # School Database Design
 
-## Table Explanations
-* **`students`**: Stores individual student records, including a unique auto-incrementing identifier, their full name, and a unique email address to prevent duplicate registrations.
-* **`courses`**: Stores the available classes or modules, containing a unique identifier and the course title.
-* **`enrolments`**: A junction (or join) table that bridges the gap between students and courses. It records which student is taking which course and also stores the specific grade for that pairing.
+## Tables
+* **students** - one row per student: id, name and a unique email.
+* **courses** - one row per course: id, title and teacher.
+* **enrolments** - one row per student per course, with the grade. Its primary key is the pair (student_id, course_id), so a student cannot be enrolled on the same course twice.
 
 ## Relationships
-* **One-to-Many**: A single student can have many enrolments, and a single course can have many enrolments. Therefore, both the `students` to `enrolments` relationship and the `courses` to `enrolments` relationship are one-to-many[cite: 6]. 
-* **Many-to-Many**: The relationship directly between `students` and `courses` is many-to-many (one student takes multiple courses; one course has multiple students)[cite: 6].
-* **Why a Join Table is Needed**: Relational databases enforce normalization, meaning each column should hold exactly one value[cite: 6]. We cannot effectively store a comma-separated list of courses inside a student's row (e.g., `courses = "Math, Science"`) because it makes searching, updating, and enforcing referential integrity extremely difficult[cite: 6]. The `enrolments` join table resolves this by holding pairs of IDs, allowing us to strictly map the many-to-many relationship using a composite primary key to prevent duplicate enrollments[cite: 6].
+* Students and courses are **many-to-many**: a student takes many courses and a course has many students.
+* A relational table cannot store a list of courses in one column, so the **enrolments join table** stores one row per pairing.
+* This creates two **one-to-many** relationships: one student has many enrolments, and one course has many enrolments.
 
-## Recommended Index
-I would add an index to the `course_id` column in the `enrolments` table:
-`CREATE INDEX idx_enrolments_course_id ON enrolments(course_id);`
-**Reason**: While primary keys (like `id` in `students` and the composite primary key starting with `student_id` in `enrolments`) are indexed automatically[cite: 6], foreign keys that act as the second part of a composite key are often not. Because this application will frequently run queries like "find all students on one course" or "count the number of students per course," the database will need to search heavily by `course_id`. Adding an index provides a sorted structure for `course_id`, enabling the database to jump directly to the required rows instead of performing a slow, full table scan[cite: 6].
+## Index
+    CREATE INDEX idx_enrolments_course ON enrolments(course_id);
 
-## Database Choice: SQL vs NoSQL
-For a school database, I would strongly choose a **SQL (relational) database** over NoSQL. The school's data is highly structured, strictly tabular, and relies entirely on predictable relationships between entities (students, courses, and the grades connecting them)[cite: 6]. SQL databases excel in environments where correctness and complex relationships are critical, utilizing foreign keys, `JOIN` queries, and `CASCADE` rules to enforce strict data integrity[cite: 6]. Conversely, NoSQL document databases are better suited for rapidly changing, flexible data shapes or large-scale catalogues[cite: 6], which do not align with the rigid, normalized needs of academic record-keeping.
+The primary key already makes lookups by student fast (student_id comes first). Teachers will often ask "who is on my course?", which searches by course_id, so a separate index on course_id speeds up that query.
+
+## Primary Key Trade-offs: Composite vs. Dedicated ID
+When designing the `enrolments` table, we used a composite primary key `(student_id, course_id)`. 
+* **Composite Primary Key:** This natively enforces that a student can only enroll in a specific course once without needing a separate unique constraint. However, the trade-off is that updating a specific record (like updating a grade) requires routing and querying using both IDs in the `WHERE` clause, which can make API endpoints and ORM mutations slightly more verbose.
+* **Dedicated Enrolment ID:** Using a dedicated surrogate ID (e.g., `id INTEGER PRIMARY KEY`) alongside a `UNIQUE(student_id, course_id)` constraint makes it easier to target a single enrollment directly for updates (e.g., `PATCH /api/enrolments/{id}`). The trade-off is that it adds an extra column and an additional unique index to the database, slightly increasing storage requirements.
+
+## SQL or NoSQL?
+SQL is the better choice. The data is highly structured and the relationships matter: every enrolment must point to a real student and a real course, a student must not enrol twice, and grades must not be lost. A relational database enforces all of these rules with keys and constraints, and JOINs answer questions like "all students on this course" easily.
